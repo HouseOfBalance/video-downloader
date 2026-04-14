@@ -1,0 +1,518 @@
+"use client";
+
+import { useState, useEffect, useCallback, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Download,
+  Youtube,
+  Film,
+  Loader2,
+  Trash2,
+  Clock,
+  Music,
+  Eye,
+  ChevronDown,
+  Check,
+  AlertCircle,
+} from "lucide-react";
+
+// --- Types ---
+interface VideoInfo {
+  title: string;
+  duration: string;
+  thumbnail: string;
+  url: string;
+}
+
+interface DownloadItem {
+  id: string;
+  title: string;
+  quality: string;
+  timestamp: number;
+}
+
+// --- Mock Video Detection (Simulates API call) ---
+const fetchVideoMetadata = async (url: string): Promise<VideoInfo> => {
+  // Simulate network delay
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+
+  // For demo, return consistent rich metadata
+  // In production, this would call a real API like yt-dlp, RapidAPI, etc.
+  const demoThumbnails = [
+    "https://images.unsplash.com/photo-1536240474400-8ddb1f30b5a1?w=400&h=225&fit=crop",
+    "https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=400&h=225&fit=crop",
+    "https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?w=400&h=225&fit=crop",
+    "https://images.unsplash.com/photo-1516280440614-37939bbacd81?w=400&h=225&fit=crop",
+  ];
+  const randomThumb =
+    demoThumbnails[Math.floor(Math.random() * demoThumbnails.length)];
+
+  const titles = [
+    "Midnight Echoes | 4K Cinematic Visuals",
+    "Neon Dreams: Ultra HD Experience",
+    "Future Frontiers: AI & Creativity",
+    "Lost in Sakura | 8K HDR",
+  ];
+  const randomTitle = titles[Math.floor(Math.random() * titles.length)];
+
+  return {
+    title: randomTitle,
+    duration: `${Math.floor(Math.random() * 8) + 2}:${Math.floor(
+      Math.random() * 59
+    )
+      .toString()
+      .padStart(2, "0")}`,
+    thumbnail: randomThumb,
+    url: url,
+  };
+};
+
+// --- Helper: Format timestamp ---
+const formatRelativeTime = (timestamp: number): string => {
+  const diff = Date.now() - timestamp;
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+  return `${days} day${days > 1 ? "s" : ""} ago`;
+};
+
+export default function Home() {
+  // --- State ---
+  const [inputUrl, setInputUrl] = useState("");
+  const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
+  const [loadingDetection, setLoadingDetection] = useState(false);
+  const [selectedQuality, setSelectedQuality] = useState("1080p");
+  const [recentDownloads, setRecentDownloads] = useState<DownloadItem[]>([]);
+  const [notification, setNotification] = useState<{
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
+  const [qualityOpen, setQualityOpen] = useState(false);
+  const qualityRef = useRef<HTMLDivElement>(null);
+
+  // Quality options
+  const qualityOptions = [
+    { value: "4K", label: "4K (Ultra HD)", icon: "✨" },
+    { value: "1080p", label: "1080p (Full HD)", icon: "🎬" },
+    { value: "720p", label: "720p (HD)", icon: "📱" },
+    { value: "MP3", label: "MP3 (Audio Only)", icon: "🎵" },
+  ];
+
+  // --- Load recent downloads from localStorage ---
+  useEffect(() => {
+    const stored = localStorage.getItem("recentDownloads");
+    if (stored) {
+      try {
+        setRecentDownloads(JSON.parse(stored));
+      } catch (e) {
+        console.error("Failed to parse recent downloads");
+      }
+    }
+  }, []);
+
+  // Save to localStorage whenever recentDownloads changes
+  useEffect(() => {
+    localStorage.setItem("recentDownloads", JSON.stringify(recentDownloads));
+  }, [recentDownloads]);
+
+  // --- URL Detection with debounce ---
+  const detectionTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (detectionTimeout.current) clearTimeout(detectionTimeout.current);
+
+    const url = inputUrl.trim();
+    if (!url || (!url.startsWith("http") && !url.startsWith("www."))) {
+      setVideoInfo(null);
+      setLoadingDetection(false);
+      return;
+    }
+
+    // Format URL if missing protocol
+    let formattedUrl = url;
+    if (!url.startsWith("http")) formattedUrl = "https://" + url;
+
+    detectionTimeout.current = setTimeout(async () => {
+      setLoadingDetection(true);
+      try {
+        const metadata = await fetchVideoMetadata(formattedUrl);
+        setVideoInfo(metadata);
+      } catch (error) {
+        console.error("Detection failed", error);
+        setVideoInfo(null);
+        showNotification("Failed to detect video. Try another link.", "error");
+      } finally {
+        setLoadingDetection(false);
+      }
+    }, 600);
+
+    return () => {
+      if (detectionTimeout.current) clearTimeout(detectionTimeout.current);
+    };
+  }, [inputUrl]);
+
+  // --- Show floating notification ---
+  const showNotification = (message: string, type: "success" | "error") => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  // --- Handle Download ---
+  const handleDownload = () => {
+    if (!videoInfo) {
+      showNotification("Please paste a valid video link first.", "error");
+      return;
+    }
+
+    // Save to recent downloads
+    const newDownload: DownloadItem = {
+      id: `${Date.now()}-${Math.random()}`,
+      title: videoInfo.title,
+      quality: selectedQuality,
+      timestamp: Date.now(),
+    };
+
+    setRecentDownloads((prev) => [newDownload, ...prev].slice(0, 12)); // Keep last 12
+
+    // Simulate download process (premium feedback)
+    showNotification(
+      `✨ Downloading "${videoInfo.title}" in ${selectedQuality}... (Demo)`,
+      "success"
+    );
+
+    // In a real app, trigger actual download via backend API
+    console.log("Download requested:", {
+      url: videoInfo.url,
+      quality: selectedQuality,
+    });
+  };
+
+  // --- Remove from recent downloads ---
+  const removeRecent = (id: string) => {
+    setRecentDownloads((prev) => prev.filter((item) => item.id !== id));
+    showNotification("Removed from history", "success");
+  };
+
+  const clearAllRecent = () => {
+    setRecentDownloads([]);
+    showNotification("Download history cleared", "success");
+  };
+
+  // --- Close quality dropdown on click outside ---
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (qualityRef.current && !qualityRef.current.contains(event.target as Node)) {
+        setQualityOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative min-h-screen w-full overflow-x-hidden bg-gradient-to-br from-[#0a0a2a] via-[#1a1a4a] to-[#0a0a2a]">
+      {/* Animated Mesh Gradient Background */}
+      <div className="fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute top-0 -left-40 h-[500px] w-[500px] rounded-full bg-purple-700/30 blur-[120px] animate-pulse-slow" />
+        <div className="absolute bottom-0 right-0 h-[600px] w-[600px] rounded-full bg-blue-700/30 blur-[140px] animate-pulse-slower" />
+        <div className="absolute top-1/3 left-1/2 h-[400px] w-[400px] -translate-x-1/2 rounded-full bg-pink-700/20 blur-[100px] animate-pulse" />
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="none" fill-rule="evenodd"%3E%3Cg fill="%239C92AC" fill-opacity="0.05"%3E%3Cpath d="M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-20" />
+      </div>
+
+      {/* Notification Toast */}
+      <AnimatePresence>
+        {notification && (
+          <motion.div
+            initial={{ opacity: 0, y: -50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.9 }}
+            className="fixed top-6 left-1/2 z-50 -translate-x-1/2 rounded-2xl border border-white/20 bg-black/70 backdrop-blur-xl px-6 py-3 shadow-2xl"
+          >
+            <div className="flex items-center gap-3 text-white">
+              {notification.type === "success" ? (
+                <Check className="h-5 w-5 text-green-400" />
+              ) : (
+                <AlertCircle className="h-5 w-5 text-red-400" />
+              )}
+              <span className="font-medium">{notification.message}</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <main className="relative mx-auto max-w-6xl px-4 py-12 md:py-20">
+        {/* Hero Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          className="mb-12 text-center"
+        >
+          <h1 className="bg-gradient-to-r from-white via-purple-200 to-blue-200 bg-clip-text text-5xl font-bold text-transparent md:text-7xl">
+            Vortex Downloader
+          </h1>
+          <p className="mt-4 text-lg text-white/60 md:text-xl">
+            Ultra-fast, watermark-free downloads from any platform
+          </p>
+        </motion.div>
+
+        {/* Massive Glassmorphism Input Bar */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          className="group relative mx-auto w-full max-4xl"
+        >
+          <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 opacity-0 blur-xl transition duration-500 group-hover:opacity-70" />
+          <div className="relative rounded-2xl border border-white/20 bg-white/10 backdrop-blur-2xl shadow-2xl md:rounded-3xl">
+            <div className="flex flex-col gap-3 p-3 md:flex-row md:items-center md:p-2">
+              <input
+                type="text"
+                value={inputUrl}
+                onChange={(e) => setInputUrl(e.target.value)}
+                placeholder="Paste video link from YouTube, TikTok, Instagram, Facebook..."
+                className="flex-1 bg-transparent px-5 py-4 text-base text-white placeholder:text-white/40 focus:outline-none md:text-lg"
+              />
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleDownload}
+                disabled={!videoInfo && !loadingDetection}
+                className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-8 py-4 font-bold text-white shadow-lg shadow-purple-500/30 transition-all hover:shadow-xl hover:shadow-purple-500/40 disabled:opacity-50 disabled:hover:scale-100 md:rounded-2xl"
+              >
+                <Download className="h-5 w-5" />
+                Download
+              </motion.button>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Video Preview + Quality Selector Section */}
+        <div className="mt-12">
+          <AnimatePresence mode="wait">
+            {loadingDetection && (
+              <motion.div
+                key="skeleton"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm"
+              >
+                <div className="flex flex-col gap-4 p-4 md:flex-row">
+                  <div className="h-32 w-full animate-pulse rounded-xl bg-white/10 md:h-28 md:w-48" />
+                  <div className="flex-1 space-y-3">
+                    <div className="h-6 w-3/4 animate-pulse rounded-lg bg-white/10" />
+                    <div className="h-4 w-1/3 animate-pulse rounded-lg bg-white/10" />
+                    <div className="h-8 w-32 animate-pulse rounded-lg bg-white/10" />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {!loadingDetection && videoInfo && (
+              <motion.div
+                key="preview"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                className="overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-md"
+              >
+                <div className="flex flex-col gap-5 p-5 md:flex-row md:items-center">
+                  {/* Thumbnail */}
+                  <div className="relative group/thumb">
+                    <img
+                      src={videoInfo.thumbnail}
+                      alt="Video thumbnail"
+                      className="h-32 w-48 rounded-xl object-cover shadow-lg transition duration-300 group-hover/thumb:scale-105 md:h-28"
+                    />
+                    <div className="absolute bottom-2 right-2 rounded-md bg-black/70 px-2 py-0.5 text-xs font-mono text-white backdrop-blur">
+                      {videoInfo.duration}
+                    </div>
+                  </div>
+
+                  {/* Info + Quality Selector */}
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold text-white">
+                      {videoInfo.title}
+                    </h3>
+                    <div className="mt-1 flex items-center gap-2 text-sm text-white/50">
+                      <Eye className="h-3.5 w-3.5" />
+                      <span>HD Ready</span>
+                    </div>
+
+                    {/* Quality Dropdown */}
+                    <div className="relative mt-4" ref={qualityRef}>
+                      <button
+                        onClick={() => setQualityOpen(!qualityOpen)}
+                        className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-white transition hover:bg-white/20"
+                      >
+                        {qualityOptions.find((q) => q.value === selectedQuality)
+                          ?.icon || "🎬"}
+                        <span>
+                          {
+                            qualityOptions.find((q) => q.value === selectedQuality)
+                              ?.label
+                          }
+                        </span>
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform ${
+                            qualityOpen ? "rotate-180" : ""
+                          }`}
+                        />
+                      </button>
+
+                      <AnimatePresence>
+                        {qualityOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="absolute left-0 top-full z-20 mt-2 w-56 rounded-xl border border-white/20 bg-black/80 backdrop-blur-xl shadow-2xl"
+                          >
+                            {qualityOptions.map((option) => (
+                              <button
+                                key={option.value}
+                                onClick={() => {
+                                  setSelectedQuality(option.value);
+                                  setQualityOpen(false);
+                                }}
+                                className="flex w-full items-center gap-3 px-4 py-3 text-left text-white transition hover:bg-white/10"
+                              >
+                                <span>{option.icon}</span>
+                                <span className="flex-1">{option.label}</span>
+                                {selectedQuality === option.value && (
+                                  <Check className="h-4 w-4 text-purple-400" />
+                                )}
+                              </button>
+                            ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Supported Platforms Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.6 }}
+          className="mt-20"
+        >
+          <h2 className="mb-8 text-center text-2xl font-semibold text-white/80">
+            Supported Platforms
+          </h2>
+          <div className="flex flex-wrap justify-center gap-8 md:gap-12">
+            {[
+              { name: "YouTube", icon: "https://cdn.simpleicons.org/youtube/white", glow: "red" },
+              { name: "TikTok", icon: "https://cdn.simpleicons.org/tiktok/white", glow: "pink", badge: "No Watermark" },
+              { name: "Facebook", icon: "https://cdn.simpleicons.org/facebook/white", glow: "blue" },
+              { name: "Instagram", icon: "https://cdn.simpleicons.org/instagram/white", glow: "purple" },
+            ].map((platform) => (
+              <div key={platform.name} className="group flex flex-col items-center gap-2">
+                <div className={`relative rounded-2xl bg-white/5 p-4 backdrop-blur-sm transition-all duration-300 group-hover:scale-110 group-hover:shadow-lg group-hover:shadow-${platform.glow}-500/20`}>
+                  <img src={platform.icon} alt={platform.name} className="h-10 w-10 md:h-12 md:w-12" />
+                  <div className="absolute -bottom-1 left-1/2 h-6 w-6 -translate-x-1/2 translate-y-full blur-md group-hover:animate-pulse" />
+                </div>
+                <span className="text-sm font-medium text-white/70">{platform.name}</span>
+                {platform.badge && (
+                  <span className="text-[10px] font-bold text-green-300 uppercase tracking-wider">{platform.badge}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* Recent Downloads Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.6 }}
+          className="mt-20"
+        >
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-purple-300" />
+              <h2 className="text-2xl font-semibold text-white">Recent Downloads</h2>
+            </div>
+            {recentDownloads.length > 0 && (
+              <button
+                onClick={clearAllRecent}
+                className="flex items-center gap-1 rounded-lg border border-white/20 px-3 py-1.5 text-sm text-white/70 transition hover:bg-white/10 hover:text-white"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Clear All
+              </button>
+            )}
+          </div>
+
+          {recentDownloads.length === 0 ? (
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-8 text-center text-white/40 backdrop-blur-sm">
+              No downloads yet. Paste a link and hit download!
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {recentDownloads.map((item, idx) => (
+                <motion.div
+                  key={item.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.05 }}
+                  className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-3 backdrop-blur-sm transition hover:bg-white/10"
+                >
+                  <div className="flex flex-1 flex-col gap-1 overflow-hidden">
+                    <p className="truncate font-medium text-white">{item.title}</p>
+                    <div className="flex items-center gap-3 text-xs text-white/50">
+                      <span className="flex items-center gap-1">
+                        <Music className="h-3 w-3" /> {item.quality}
+                      </span>
+                      <span>•</span>
+                      <span>{formatRelativeTime(item.timestamp)}</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => removeRecent(item.id)}
+                    className="rounded-lg p-2 text-white/40 transition hover:bg-white/10 hover:text-red-400"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </motion.div>
+
+        {/* Footer CTA */}
+        <div className="mt-20 text-center text-sm text-white/30">
+          ⚡ High-speed servers • No watermarks • Privacy-first
+        </div>
+      </main>
+
+      <style jsx global>{`
+        @keyframes pulse-slow {
+          0%, 100% { opacity: 0.5; transform: scale(1); }
+          50% { opacity: 0.8; transform: scale(1.1); }
+        }
+        @keyframes pulse-slower {
+          0%, 100% { opacity: 0.3; transform: scale(1); }
+          50% { opacity: 0.6; transform: scale(1.2); }
+        }
+        .animate-pulse-slow {
+          animation: pulse-slow 8s ease-in-out infinite;
+        }
+        .animate-pulse-slower {
+          animation: pulse-slower 12s ease-in-out infinite;
+        }
+      `}</style>
+    </div>
+  );
+}
