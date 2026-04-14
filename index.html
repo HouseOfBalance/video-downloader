@@ -221,7 +221,7 @@
             }, 600);
         });
 
-        // --- GỌI API THẬT ĐỂ TẢI XUỐNG (BẢN FIX YOUTUBE BAN + FALLBACK 100%) ---
+        // --- GỌI API THẬT ĐỂ TẢI XUỐNG (BẢN FIX KẾ HOẠCH B) ---
         confirmDownloadBtn.addEventListener('click', async () => {
             if(!currentUrl) return;
             
@@ -234,11 +234,11 @@
 
             // Danh sách các máy chủ cộng đồng (Underground) có khả năng tải YouTube cao nhất hiện tại
             const cobaltServers = [
-                'https://co.wuk.sh/',          // Server đỉnh nhất hiện nay, ít block YT
-                'https://cobalt.kwiatektv.me/',// Server Châu Âu xịn
-                'https://cobalt.seasi.dev/',   // Server backup 1
-                'https://api.vukky.net/',      // Server backup 2
-                'https://api.cobalt.tools/'    // Server chính (Để cuối cùng phòng khi tải TikTok/IG)
+                'https://co.wuk.sh/',          
+                'https://cobalt.kwiatektv.me/',
+                'https://cobalt.seasi.dev/',   
+                'https://api.vukky.net/',      
+                'https://api.cobalt.tools/'    
             ];
 
             let downloadSuccess = false;
@@ -294,16 +294,16 @@
                 }
             }
 
-            // Nếu toàn bộ Server Cobalt đều bó tay (Kế hoạch B)
+            // NẾU TẤT CẢ SERVER COBALT SẬP HOẶC BỊ CHẶN: DÙNG KẾ HOẠCH B SIÊU CỨNG
             if (!downloadSuccess) {
                 console.warn("Tất cả Cobalt Servers đã sập! Kích hoạt Kế hoạch B...");
                 showToast('Server chính quá tải, chuyển kênh dự phòng...', 'success');
                 
                 let safeDownloadUrl = `https://cobalt.tools/?u=${encodeURIComponent(currentUrl)}`;
                 
-                // NẾU LÀ YOUTUBE: Không văng về trang chủ Cobalt nữa (vì nó chặn), văng sang trang chuyên dụng khác!
+                // NẾU LÀ YOUTUBE: Bắn thẳng qua Y2Mate (Trang chuyên tải YT trâu bò nhất)
                 if (isYouTube) {
-                    safeDownloadUrl = `https://10downloader.com/download?v=${encodeURIComponent(currentUrl)}`;
+                    safeDownloadUrl = `https://y2mate.is/en105/youtube-to-mp4.html?url=${encodeURIComponent(currentUrl)}`;
                 }
 
                 // Mở tab mới với link dự phòng
