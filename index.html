@@ -221,72 +221,92 @@
             }, 600);
         });
 
-        // --- GỌI API THẬT ĐỂ TẢI XUỐNG (BẢN FIX CORS PROXY + FALLBACK 100%) ---
+        // --- GỌI API THẬT ĐỂ TẢI XUỐNG (BẢN FIX YOUTUBE BAN + FALLBACK 100%) ---
         confirmDownloadBtn.addEventListener('click', async () => {
             if(!currentUrl) return;
             
             const type = qualitySelect.value; // 'video' hoặc 'audio'
+            const isYouTube = currentUrl.includes('youtube.com') || currentUrl.includes('youtu.be');
             
-            showToast('Đang kết nối qua Proxy vượt tường lửa...', 'loading');
+            showToast('Đang quét máy chủ khả dụng...', 'loading');
             confirmDownloadBtn.disabled = true;
             confirmDownloadBtn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> Processing...`;
 
-            try {
-                // Phương án A: Dùng CORS Proxy để lách luật trình duyệt
-                const targetApi = 'https://api.cobalt.tools/';
-                const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetApi);
+            // Danh sách các máy chủ cộng đồng (Underground) có khả năng tải YouTube cao nhất hiện tại
+            const cobaltServers = [
+                'https://co.wuk.sh/',          // Server đỉnh nhất hiện nay, ít block YT
+                'https://cobalt.kwiatektv.me/',// Server Châu Âu xịn
+                'https://cobalt.seasi.dev/',   // Server backup 1
+                'https://api.vukky.net/',      // Server backup 2
+                'https://api.cobalt.tools/'    // Server chính (Để cuối cùng phòng khi tải TikTok/IG)
+            ];
 
-                const response = await fetch(proxyUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        url: currentUrl,
-                        downloadMode: type === 'audio' ? 'audio' : 'auto'
-                    })
-                });
+            let downloadSuccess = false;
 
-                if (response.ok) {
-                    const data = await response.json();
+            // Chạy qua từng server xem thằng nào còn sống và chưa chặn YT
+            for (const serverUrl of cobaltServers) {
+                if (downloadSuccess) break;
+
+                try {
+                    console.log(`Đang mượn sức mạnh từ: ${serverUrl}`);
                     
-                    if (data.url) {
-                        showToast('Thành công! Đang tải...', 'success');
-                        
-                        // Lưu vào lịch sử
-                        const newDownload = {
-                            id: Date.now().toString(),
-                            title: currentUrl,
-                            platform: videoTitle.textContent,
-                            quality: type === 'audio' ? 'MP3 Audio' : 'MP4 Video'
-                        };
-                        recentDownloads.unshift(newDownload);
-                        if(recentDownloads.length > 5) recentDownloads.pop();
-                        localStorage.setItem('premiumDownloads', JSON.stringify(recentDownloads));
-                        renderRecent();
+                    // Dùng Proxy để lách CORS
+                    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(serverUrl);
+                    
+                    const response = await fetch(proxyUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            url: currentUrl,
+                            downloadMode: type === 'audio' ? 'audio' : 'auto'
+                        })
+                    });
 
-                        // Tự động mở tab tải
-                        window.open(data.url, '_blank');
+                    if (response.ok) {
+                        const data = await response.json();
                         
-                        // Reset nút
-                        confirmDownloadBtn.disabled = false;
-                        confirmDownloadBtn.innerHTML = `<i class="ph-bold ph-download-simple"></i> Download`;
-                        return; // Kết thúc thành công
+                        // Nếu server trả về link và không báo lỗi internal
+                        if (data.url && data.status !== 'error') {
+                            downloadSuccess = true;
+                            showToast('Thành công! Đang tải...', 'success');
+                            
+                            // Lưu vào lịch sử
+                            const newDownload = {
+                                id: Date.now().toString(),
+                                title: currentUrl,
+                                platform: videoTitle.textContent,
+                                quality: type === 'audio' ? 'MP3 Audio' : 'MP4 Video'
+                            };
+                            recentDownloads.unshift(newDownload);
+                            if(recentDownloads.length > 5) recentDownloads.pop();
+                            localStorage.setItem('premiumDownloads', JSON.stringify(recentDownloads));
+                            renderRecent();
+
+                            // Tự động mở tab tải
+                            window.open(data.url, '_blank');
+                        }
                     }
+                } catch (error) {
+                    console.warn(`Server ${serverUrl} thất bại. Đang nhảy sang server khác...`);
                 }
-                // Nếu chạy đến đây tức là Phương án A thất bại
-                throw new Error("Proxy failed");
+            }
+
+            // Nếu toàn bộ Server Cobalt đều bó tay (Kế hoạch B)
+            if (!downloadSuccess) {
+                console.warn("Tất cả Cobalt Servers đã sập! Kích hoạt Kế hoạch B...");
+                showToast('Server chính quá tải, chuyển kênh dự phòng...', 'success');
                 
-            } catch (error) {
-                console.warn("API ngầm bị chặn! Kích hoạt Phương án B...");
+                let safeDownloadUrl = `https://cobalt.tools/?u=${encodeURIComponent(currentUrl)}`;
                 
-                // Phương án B: Tỉ lệ thành công 100%
-                // Nếu trình duyệt nhất quyết chặn gọi API ngầm, ta sẽ đẩy link trực tiếp sang giao diện gốc của Cobalt
-                showToast('Chuyển hướng sang kênh tải an toàn...', 'success');
-                
-                // Mở tab mới với link đã được nhúng sẵn
-                const safeDownloadUrl = `https://cobalt.tools/?u=${encodeURIComponent(currentUrl)}`;
+                // NẾU LÀ YOUTUBE: Không văng về trang chủ Cobalt nữa (vì nó chặn), văng sang trang chuyên dụng khác!
+                if (isYouTube) {
+                    safeDownloadUrl = `https://10downloader.com/download?v=${encodeURIComponent(currentUrl)}`;
+                }
+
+                // Mở tab mới với link dự phòng
                 window.open(safeDownloadUrl, '_blank');
             }
 
