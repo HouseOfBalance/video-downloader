@@ -221,35 +221,80 @@
             }, 600);
         });
 
-        // --- GỌI API THẬT ĐỂ TẢI XUỐNG ---
-        confirmDownloadBtn.addEventListener('click', async () => {
-            if(!currentUrl) return;
-            
-            const type = qualitySelect.value; // 'video' hoặc 'audio'
-            const isAudioOnly = type === 'audio';
-            
-            showToast('Đang trích xuất link tải gốc...', 'loading');
-            confirmDownloadBtn.disabled = true;
-            confirmDownloadBtn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> Processing...`;
+        // --- GỌI API THẬT ĐỂ TẢI XUỐNG (PHIÊN BẢN CHỐNG CHẶN CORS & V10) ---
+confirmDownloadBtn.addEventListener('click', async () => {
+    if(!currentUrl) return;
+    
+    const type = qualitySelect.value; // 'video' hoặc 'audio'
+    
+    showToast('Đang trích xuất link tải gốc...', 'loading');
+    confirmDownloadBtn.disabled = true;
+    confirmDownloadBtn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> Processing...`;
 
-            try {
-                // Gọi tới Cobalt API (Không cần API Key)
-                const response = await fetch('https://api.cobalt.tools/api/json', {
-                    method: 'POST',
-                    headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        url: currentUrl,
-                        isAudioOnly: isAudioOnly
-                    })
-                });
+    // Danh sách các máy chủ Cobalt (Bao gồm Server cộng đồng không chặn CORS)
+    const cobaltServers = [
+        'https://cobalt.q0.app/',     // Server cộng đồng 1 (Rất ổn định)
+        'https://api.cobalt.tools/',  // Server chính thức (Hay chặn Vercel)
+        'https://api.vukky.net/'      // Server cộng đồng 2
+    ];
 
+    let downloadSuccess = false;
+
+    // Vòng lặp: Thử từng server, cái nào xài được thì chốt cái đó
+    for (const serverUrl of cobaltServers) {
+        if (downloadSuccess) break; // Nếu đã tải thành công thì ngưng vòng lặp
+
+        try {
+            console.log(`Đang thử gọi API từ: ${serverUrl}`);
+            const response = await fetch(serverUrl, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    url: currentUrl,
+                    downloadMode: type === 'audio' ? 'audio' : 'auto' // Payload chuẩn v10
+                })
+            });
+
+            if (response.ok) {
                 const data = await response.json();
-
+                
                 if (data.url) {
-                    showToast('Thành công! Đang tải...', 'success');
+                    downloadSuccess = true;
+                    showToast('Thành công! Đang mở file...', 'success');
+                    
+                    // Lưu vào lịch sử
+                    const newDownload = {
+                        id: Date.now().toString(),
+                        title: currentUrl,
+                        platform: videoTitle.textContent,
+                        quality: type === 'audio' ? 'MP3 Audio' : 'MP4 Video'
+                    };
+                    recentDownloads.unshift(newDownload);
+                    if(recentDownloads.length > 5) recentDownloads.pop();
+                    localStorage.setItem('premiumDownloads', JSON.stringify(recentDownloads));
+                    renderRecent();
+
+                    // Tự động mở tab mới để trình duyệt tải file về
+                    window.open(data.url, '_blank');
+                }
+            }
+        } catch (error) {
+            console.warn(`Server ${serverUrl} bị lỗi hoặc chặn CORS. Đang thử server tiếp theo...`);
+        }
+    }
+
+    // Nếu thử hết cả 3 server mà vẫn tạch
+    if (!downloadSuccess) {
+        showToast('Tất cả máy chủ đều quá tải, vui lòng thử lại sau!', 'error');
+    }
+
+    // Reset lại nút bấm
+    confirmDownloadBtn.disabled = false;
+    confirmDownloadBtn.innerHTML = `<i class="ph-bold ph-download-simple"></i> Download`;
+});
                     
                     // Lưu vào lịch sử
                     const newDownload = {
